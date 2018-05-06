@@ -23487,7 +23487,7 @@ let DBRE = {
                     "type": "12,VARCHAR2"
                 },
                 {
-                    "name": "PA_LARGOVALOR",
+                    "name": "PA_LARGOVALORPA_LARGOVALOR",
                     "primaryKey": false,
                     "required": true,
                     "scale": 0,
