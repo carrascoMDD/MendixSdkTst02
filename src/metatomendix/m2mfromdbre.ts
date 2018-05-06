@@ -8,10 +8,21 @@ import {Icolumn, Idbre, Itable} from '../sourcemeta/idbre';
    Used to expedite trials with models smaller than the whole 120 entities and over 3000 attributes.
    If > 0 then it is the max # of entities to be created
 */
-const LIMITRUN = true;
+const LIMITRUN = false;
 const FASTRUN  = false;
 const MAXENTITIES   = LIMITRUN ? ( FASTRUN ? 20 : 50) : 0;
 const MAXATTRIBUTES = LIMITRUN ? ( FASTRUN ? 6  : 10) : 0;
+
+/* With all entities and attributes
+started converting model (all etties and attrs)
+16:05:39
+start to open the diagram
+16:06:24
+actually see diagram
+16:08:48
+ */
+
+const DOCUMENTATIONFROMSOURCE = false;
 
 const XCURSOR_INITIAL = 20;
 const XCURSOR_SPACE = 170;
@@ -174,7 +185,9 @@ function createAndPopulateEntity( theDomainModel : domainmodels.DomainModel, the
     const aNewEntity = domainmodels.Entity.createIn(theDomainModel);
     aNewEntity.name = theTable.name;
     aNewEntity.location = { x: theXCursor, y: theYCursor };
-    aNewEntity.documentation = JSON.stringify( theTable, (theKey : string, theValue : any) => { return ( theKey == "column") ? undefined : theValue; }, 4);
+    if( DOCUMENTATIONFROMSOURCE) {
+        aNewEntity.documentation = JSON.stringify( theTable, (theKey : string, theValue : any) => { return ( theKey == "column") ? undefined : theValue; }, 4);
+    }
 
     const someColumns = chooseAFewAttributes( theTable, theFKTablesAndColumns);
     console.info( "  ... about to create " + someColumns.length + " attributes");
@@ -289,7 +302,9 @@ function createAndPopulateAttribute( theDomainModel : domainmodels.DomainModel, 
     const aNewAttribute = domainmodels.Attribute.createIn(theEntity);
 
     aNewAttribute.name = anAttributeName;
-    aNewAttribute.documentation = JSON.stringify( theColumn, null, 4);
+    if( DOCUMENTATIONFROMSOURCE) {
+        aNewAttribute.documentation = JSON.stringify( theColumn, null, 4);
+    }
 
     switch( theColumn.type) {
 
