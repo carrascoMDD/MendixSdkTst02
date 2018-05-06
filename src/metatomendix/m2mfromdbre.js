@@ -5,7 +5,7 @@ const mendixmodelsdk_1 = require("mendixmodelsdk");
    Used to expedite trials with models smaller than the whole 120 entities and over 3000 attributes.
    If > 0 then it is the max # of entities to be created
 */
-const LIMITRUN = false;
+const LIMITRUN = true;
 const MAXENTITIES = LIMITRUN ? 50 : 0;
 const MAXATTRIBUTES = LIMITRUN ? 10 : 0;
 const XCURSOR_INITIAL = 100;
