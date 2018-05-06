@@ -9,7 +9,7 @@ import {Icolumn, Idbre, Itable} from '../sourcemeta/idbre';
    If > 0 then it is the max # of entities to be created
 */
 const LIMITRUN = true;
-const FASTRUN  = true;
+const FASTRUN  = false;
 const MAXENTITIES   = LIMITRUN ? ( FASTRUN ? 20 : 50) : 0;
 const MAXATTRIBUTES = LIMITRUN ? ( FASTRUN ? 6  : 10) : 0;
 
