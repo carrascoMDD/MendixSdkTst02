@@ -5,8 +5,8 @@ const mendixmodelsdk_1 = require("mendixmodelsdk");
    Used to expedite trials with models smaller than the whole 120 entities and over 3000 attributes.
    If > 0 then it is the max # of entities to be created
 */
-const MAXENTITIES = 10;
-const MAXATTRIBUTES = 10;
+const MAXENTITIES = 50;
+const MAXATTRIBUTES = 5;
 const XCURSOR_INITIAL = 100;
 const XCURSOR_SPACE = 150;
 const YCURSOR_INITIAL = 100;
@@ -32,36 +32,95 @@ function populateMendixFromDBRE(theMendixDomainModel, theDBRE) {
 }
 exports.default = populateMendixFromDBRE;
 function chooseAFewTables(theDBRE) {
+    const someTables = prioritiseTables(theDBRE.table);
     if (MAXENTITIES < 1) {
-        return theDBRE.table;
+        return someTables;
     }
-    if (theDBRE.table.length < MAXENTITIES) {
-        return theDBRE.table;
+    if (theDBRE.table.length <= MAXENTITIES) {
+        return someTables;
     }
-    return theDBRE.table.slice(0, MAXENTITIES);
+    return someTables.slice(0, MAXENTITIES);
+}
+// We prefer the tables involved in foreign keys because these allow to exercise creation of model associations
+// Return a list with prioritised tables sorted alphabetically, followed by not prioritised tables sorted alphabetically
+function prioritiseTables(theTables) {
+    if (!theTables.length) {
+        return theTables;
+    }
+    // Index by name, for O ~ log N when lookup of an Itable with name == to an Itable.foreignKey.foreignTable
+    let allTablesByName = new Map();
+    for (let aTable of theTables) {
+        allTablesByName.set(aTable.name, aTable);
+    }
+    // Collect all tables with a foreignKey, and the tables refered by these Itable.foreignKey.foreignTable
+    let somePrioritisedTables = new Map();
+    for (let aTable of theTables) {
+        if (!aTable.foreignKey || !aTable.foreignKey.length) {
+            continue;
+        }
+        if (!(aTable.name in somePrioritisedTables)) {
+            somePrioritisedTables.set(aTable.name, aTable);
+        }
+        for (let aForeignKey of aTable.foreignKey) {
+            if (aForeignKey.foreignTable) {
+                if (!(aForeignKey.foreignTable in somePrioritisedTables)) {
+                    const aForeignTable = allTablesByName.get(aForeignKey.foreignTable);
+                    if (aForeignTable) {
+                        somePrioritisedTables.set(aForeignKey.foreignTable, aForeignTable);
+                    }
+                }
+            }
+        }
+    }
+    // collect all prioritised tables, then append the ones which were not prioritised
+    const someTables = [];
+    // sort prioritised tables alphabetically, case-insensitive
+    const somePrioritisedNames = [];
+    for (let aPrioritisedName of somePrioritisedTables.keys()) {
+        somePrioritisedNames.push(aPrioritisedName);
+    }
+    const someSortedPrioritisedNames = somePrioritisedNames.sort();
+    for (let aTableName of someSortedPrioritisedNames) {
+        let aTable = allTablesByName.get(aTableName);
+        if (aTable) {
+            someTables.push(aTable);
+        }
+    }
+    const someNotPrioritisedTableNames = [];
+    for (let aTable of theTables) {
+        if (!somePrioritisedTables.has(aTable.name)) {
+            someNotPrioritisedTableNames.push(aTable.name);
+        }
+    }
+    const someSortedNotPrioritisedNames = someNotPrioritisedTableNames.sort();
+    for (let aTableName of someSortedNotPrioritisedNames) {
+        let aTable = allTablesByName.get(aTableName);
+        if (aTable) {
+            someTables.push(aTable);
+        }
+    }
+    return someTables;
 }
 function createAndPopulateEntity(theMendixDomainModel, theTable, theXCursor, theYCursor) {
     console.info("+ Entity " + theTable.name);
     const aNewEntity = mendixmodelsdk_1.domainmodels.Entity.createIn(theMendixDomainModel);
     aNewEntity.name = theTable.name;
     aNewEntity.location = { x: theXCursor, y: theYCursor };
-    aNewEntity.documentation = JSON.stringify(theTable, men(theKey, string, theValue, any), { return(theKey) { } } == "column") ? undefined : theValue;
+    aNewEntity.documentation = JSON.stringify(theTable, (theKey, theValue) => { return (theKey == "column") ? undefined : theValue; }, 4);
+    const someColumns = chooseAFewAttributes(theTable);
+    console.info("  ... about to create " + someColumns.length + " attributes");
+    for (let aColumn of someColumns) {
+        createAndPopulateAttribute(theMendixDomainModel, aNewEntity, aColumn);
+    }
+    console.info("  ok");
+    console.info("  + " + someColumns.length + " attributes");
+    return theYCursor + YCURSOR_ENTITY + (someColumns.length * YCURSOR_ATTRIBUTE) + YCURSOR_SPACE;
 }
-4;
-;
-const someColumns = chooseAFewAttributes(theTable);
-console.info("  ... about to create " + someColumns.length + " attributes");
-for (let aColumn of someColumns) {
-    createAndPopulateAttribute(theMendixDomainModel, aNewEntity, aColumn);
-}
-console.info("  ok");
-console.info("  + " + someColumns.length + " attributes");
-return theYCursor + YCURSOR_ENTITY + (someColumns.length * YCURSOR_ATTRIBUTE) + YCURSOR_SPACE;
 function chooseAFewAttributes(theTable) {
     if (MAXATTRIBUTES < 1) {
         return theTable.column;
     }
-    if (theTable.column.length < MAXATTRIBUTES) {
+    if (theTable.column.length <= MAXATTRIBUTES) {
         return theTable.column;
     }
     return theTable.column.slice(0, MAXATTRIBUTES);
