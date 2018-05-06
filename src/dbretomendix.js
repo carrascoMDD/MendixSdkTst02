@@ -10,8 +10,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 const mendixplatformsdk_1 = require("mendixplatformsdk");
 const mendixmodelsdk_1 = require("mendixmodelsdk");
-const dbre_1 = require("./src/sourcemeta/dbre");
-const m2mfromdbre_1 = require("./src/metatomendix/m2mfromdbre");
+const dbre_1 = require("./sourcemeta/dbre");
+const m2mfromdbre_1 = require("./metatomendix/m2mfromdbre");
 const username = 'carrascoMendix@ModelDD.org';
 const apikey = '883ea2d1-12da-45d8-9474-9f7a8363771f'; // Key description "For MendixSdkTst01" created 20180506
 const baseProjectName = 'ACVappMendixSdkTst01-';

@@ -1,8 +1,8 @@
 import { MendixSdkClient, OnlineWorkingCopy } from 'mendixplatformsdk';
 import { domainmodels } from 'mendixmodelsdk';
 
-import DBRE  from './src/sourcemeta/dbre';
-import populateMendixFromDBRE from './src/metatomendix/m2mfromdbre';
+import DBRE  from './sourcemeta/dbre';
+import populateMendixFromDBRE from './metatomendix/m2mfromdbre';
 
 const username = 'carrascoMendix@ModelDD.org';
 const apikey = '883ea2d1-12da-45d8-9474-9f7a8363771f'; // Key description "For MendixSdkTst01" created 20180506
