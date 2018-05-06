@@ -1,0 +1,28 @@
+{
+  "name": "mendixsdktst02",
+  "version": "1.0.0",
+  "description": "Populate a Mendix model with metadata from database reverse-engineered table, column, key and index definitons.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/carrascoMDD/MendixSdkTst02.git"
+  },
+  "keywords": [
+    "mendix"
+  ],
+  "author": "carrascomdd <carrascomdd@gmail.com> (http://SpringNut.org)",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/carrascoMDD/MendixSdkTst02/issues"
+  },
+  "homepage": "https://github.com/carrascoMDD/MendixSdkTst02#readme",
+  "dependencies": {
+    "@types/when": "^2.4.28",
+    "mendixmodelsdk": "~4.10.0",
+    "mendixplatformsdk": "~4.0.0",
+    "when": "^2.4.28"
+  }
+}
