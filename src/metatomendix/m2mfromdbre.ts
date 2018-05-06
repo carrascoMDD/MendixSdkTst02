@@ -4,12 +4,12 @@ import { domainmodels } from 'mendixmodelsdk';
 import {Icolumn, Idbre, Itable} from '../sourcemeta/idbre';
 
 const XCURSOR_INITIAL = 100;
-const XCURSOR_SPACE = 180;
+const XCURSOR_SPACE = 150;
 const YCURSOR_INITIAL = 100;
 const YCURSOR_ENTITY = 20;
-const YCURSOR_ATTRIBUTE = 16;
-const YCURSOR_SPACE = 40;
-const YCURSOR_MAX = 4000;
+const YCURSOR_ATTRIBUTE = 14;
+const YCURSOR_SPACE = 20;
+const YCURSOR_MAX = 2000;
 
 export default function populateMendixFromDBRE( theMendixDomainModel : domainmodels.DomainModel, theDBRE : Idbre) {
 
@@ -26,8 +26,9 @@ export default function populateMendixFromDBRE( theMendixDomainModel : domainmod
         anYCursor = createAndPopulateEntity( theMendixDomainModel, aTable, anXCursor, anYCursor);
         if( anYCursor > YCURSOR_MAX) {
             anXCursor = anXCursor + XCURSOR_SPACE;
+            anYCursor = YCURSOR_INITIAL;
         }
-        console.info( "Entity " + aTableIdx + " of " + aNumTables + "\n\n");
+        console.info( "Entity " + ( aTableIdx + 1) + " of " + aNumTables + "\n\n");
     }
 }
 
@@ -39,12 +40,15 @@ function createAndPopulateEntity( theMendixDomainModel : domainmodels.DomainMode
     aNewEntity.name = theTable.name;
     aNewEntity.location = { x: theXCursor, y: theYCursor };
 
+
     const someColumns : Icolumn[] = theTable.column;
+    console.info( "  ... about to create " + someColumns.length + " attributes");
     for( let aColumn of someColumns) {
 
         createAndPopulateAttribute( theMendixDomainModel, aNewEntity, aColumn);
     }
     console.info( "  ok");
+    console.info( "  + " + someColumns.length + " attributes");
 
     return theYCursor + YCURSOR_ENTITY + ( someColumns.length * YCURSOR_ATTRIBUTE)  + YCURSOR_SPACE;
 }
@@ -61,5 +65,29 @@ function createAndPopulateAttribute( theMendixDomainModel : domainmodels.DomainM
     const aNewAttribute = domainmodels.Attribute.createIn(theEntity);
 
     aNewAttribute.name = aColumnName;
-    domainmodels.StringAttributeType.createIn( aNewAttribute);
+    switch( theColumn.type) {
+
+        case "3,NUMBER":
+            domainmodels.IntegerAttributeType.createIn( aNewAttribute);
+            break;
+
+        case "12,VARCHAR2":
+            domainmodels.StringAttributeType.createIn( aNewAttribute);
+            break;
+
+        case "91,DATE":
+            domainmodels.DateTimeAttributeType.createIn( aNewAttribute);
+            break;
+
+        case "93,DATE": /* timestamp */
+            domainmodels.DateTimeAttributeType.createIn( aNewAttribute);
+            break;
+
+        case "2004,CLOB": /* timestamp */
+            domainmodels.StringAttributeType.createIn( aNewAttribute);
+            break;
+
+        default:
+            domainmodels.StringAttributeType.createIn( aNewAttribute);
+    }
 }

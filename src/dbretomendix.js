@@ -9,7 +9,6 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const mendixplatformsdk_1 = require("mendixplatformsdk");
-const mendixmodelsdk_1 = require("mendixmodelsdk");
 const dbre_1 = require("./sourcemeta/dbre");
 const m2mfromdbre_1 = require("./metatomendix/m2mfromdbre");
 const username = 'carrascoMendix@ModelDD.org';
@@ -29,9 +28,6 @@ function main() {
         catch (error) {
             console.error('Error during populating Mendix model:', error);
         }
-        const entity = mendixmodelsdk_1.domainmodels.Entity.createIn(domainModel);
-        entity.name = `${baseEntityName}${Date.now()}`;
-        entity.location = { x: 100, y: 100 };
         try {
             const revision = yield workingCopy.commit();
             console.log(`Successfully committed revision: ${revision.num()}. Done.`);

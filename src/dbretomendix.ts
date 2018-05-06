@@ -25,10 +25,6 @@ async function main() {
         console.error('Error during populating Mendix model:', error);
     }
 
-    const entity = domainmodels.Entity.createIn(domainModel);
-    entity.name = `${baseEntityName}${Date.now()}`;
-    entity.location = { x: 100, y: 100 };
-
     try {
         const revision = await workingCopy.commit();
         console.log(`Successfully committed revision: ${revision.num()}. Done.`)
