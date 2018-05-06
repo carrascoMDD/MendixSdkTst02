@@ -9,7 +9,7 @@ const mendixmodelsdk_1 = require("mendixmodelsdk");
 const LIMITRUN = false;
 const FASTRUN = false;
 const MAXENTITIES = LIMITRUN ? (FASTRUN ? 20 : 50) : 0;
-const MAXATTRIBUTES = LIMITRUN ? (FASTRUN ? 6 : 10) : 0;
+const MAXATTRIBUTES = LIMITRUN ? (FASTRUN ? 6 : 10) : 16;
 /* With all entities and attributes
 started converting model (all etties and attrs)
 16:05:39
