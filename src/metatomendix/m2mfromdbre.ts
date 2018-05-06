@@ -1,3 +1,4 @@
+// https://sprintr.home.mendix.com/index.html
 
 import { domainmodels } from 'mendixmodelsdk';
 
@@ -8,25 +9,27 @@ import {Icolumn, Idbre, Itable} from '../sourcemeta/idbre';
    If > 0 then it is the max # of entities to be created
 */
 const LIMITRUN = true;
-const MAXENTITIES   = LIMITRUN ? 50 : 0;
-const MAXATTRIBUTES = LIMITRUN ? 10 : 0;
+const FASTRUN  = true;
+const MAXENTITIES   = LIMITRUN ? ( FASTRUN ? 20 : 50) : 0;
+const MAXATTRIBUTES = LIMITRUN ? ( FASTRUN ? 6  : 10) : 0;
 
-
-const XCURSOR_INITIAL = 100;
-const XCURSOR_SPACE = 150;
-const YCURSOR_INITIAL = 100;
+const XCURSOR_INITIAL = 20;
+const XCURSOR_SPACE = 170;
+const YCURSOR_INITIAL = 20;
 const YCURSOR_ENTITY = 20;
 const YCURSOR_ATTRIBUTE = 14;
 const YCURSOR_SPACE = 20;
-const YCURSOR_MAX = 1201;
+const YCURSOR_MAX = 800;
 
-export default function populateMendixFromDBRE( theMendixDomainModel : domainmodels.DomainModel, theDBRE : Idbre) {
+
+
+export default function populateMendixFromDBRE( theDomainModel : domainmodels.DomainModel, theDBRE : Idbre) {
 
     console.info( "HI!");
 
-    const somePrioritisedTableColumns = new Map<string, string[]>();
+    const someFKTablesAndColumns = new Map<string, string[]>();
 
-    const someTables = chooseAFewTables( theDBRE, somePrioritisedTableColumns);
+    const someTables = chooseAFewTables( theDBRE, someFKTablesAndColumns);
     let aNumTables = someTables.length;
 
     let anXCursor = XCURSOR_INITIAL;
@@ -34,19 +37,21 @@ export default function populateMendixFromDBRE( theMendixDomainModel : domainmod
 
     for( let aTableIdx = 0; aTableIdx < aNumTables; aTableIdx++) {
         let aTable = someTables[ aTableIdx];
-        anYCursor = createAndPopulateEntity( theMendixDomainModel, aTable, somePrioritisedTableColumns, anXCursor, anYCursor);
+        anYCursor = createAndPopulateEntity( theDomainModel, aTable, someFKTablesAndColumns, anXCursor, anYCursor);
         if( anYCursor > YCURSOR_MAX) {
             anXCursor = anXCursor + XCURSOR_SPACE;
             anYCursor = YCURSOR_INITIAL;
         }
         console.info( "Entity " + ( aTableIdx + 1) + " of " + aNumTables + "\n\n");
     }
+
+    createAndPopulateAssociations( theDomainModel, someTables, someFKTablesAndColumns);
 }
 
 
-function chooseAFewTables( theDBRE : Idbre, thePrioritisedTableColumns : Map<string, string[]>) : Itable[] {
+function chooseAFewTables( theDBRE : Idbre, theFKTablesAndColumns : Map<string, string[]>) : Itable[] {
 
-    const someTables = prioritiseTables( theDBRE.table, thePrioritisedTableColumns);
+    const someTables = rankTables( theDBRE.table, theFKTablesAndColumns);
 
     if ( MAXENTITIES < 1) {
         return someTables;
@@ -61,10 +66,10 @@ function chooseAFewTables( theDBRE : Idbre, thePrioritisedTableColumns : Map<str
 
 
 /* We prefer the tables involved in foreign keys because these allow to exercise creation of model associations.
- Return a list with prioritised tables sorted alphabetically, followed by not prioritised tables sorted alphabetically.
+ Return a list with ranked tables sorted alphabetically, followed by not ranked tables sorted alphabetically.
  Also collect the columns of each table which intervene in foreign keys whether as local or foreign columns
 */
-function prioritiseTables( theTables : Itable[], thePrioritisedTableColumns : Map<string, string[]>) : Itable[] {
+function rankTables( theTables : Itable[], theFKTablesAndColumns : Map<string, string[]>) : Itable[] {
 
     if( !theTables.length) {
         return theTables;
@@ -78,14 +83,14 @@ function prioritiseTables( theTables : Itable[], thePrioritisedTableColumns : Ma
     }
 
     // Collect all tables with a foreignKey, and the tables refered by these Itable.foreignKey.foreignTable
-    let somePrioritisedTables = new Map<string, Itable>();
+    let someRankedTables = new Map<string, Itable>();
     for( let aTable of theTables) {
         if( !aTable.foreignKey || !aTable.foreignKey.length) {
             continue;
         }
 
-        if( !( aTable.name in somePrioritisedTables)) {
-            somePrioritisedTables.set( aTable.name, aTable);
+        if( !( aTable.name in someRankedTables)) {
+            someRankedTables.set( aTable.name, aTable);
         }
 
         for( let aForeignKey of aTable.foreignKey) {
@@ -93,47 +98,49 @@ function prioritiseTables( theTables : Itable[], thePrioritisedTableColumns : Ma
                 let aReference = aForeignKey.reference;
                 if( aReference) {
                     if( aReference.local) {
-                        prioritiseTableColumnNamed( thePrioritisedTableColumns, aTable.name, aReference.local);
+                        rankTableColumnNamed( theFKTablesAndColumns, aTable.name, aReference.local);
                     }
                     if( aReference.foreign) {
-                        prioritiseTableColumnNamed( thePrioritisedTableColumns, aForeignKey.foreignTable, aReference.foreign);
+                        rankTableColumnNamed( theFKTablesAndColumns, aForeignKey.foreignTable, aReference.foreign);
                     }
                 }
-                if( !( aForeignKey.foreignTable in somePrioritisedTables)) {
+                if( !( aForeignKey.foreignTable in someRankedTables)) {
                     const aForeignTable = allTablesByName.get( aForeignKey.foreignTable);
                     if( aForeignTable) {
-                        somePrioritisedTables.set( aForeignKey.foreignTable, aForeignTable);
+                        someRankedTables.set( aForeignKey.foreignTable, aForeignTable);
                     }
                 }
             }
         }
     }
 
-    // collect all prioritised tables, then append the ones which were not prioritised
+    // collect all ranked tables, then append the ones which were not ranked
     const someTables : Itable[] = [ ];
 
-    // sort prioritised tables alphabetically, case-insensitive
-    const somePrioritisedNames : string[] = [ ];
-    for( let aPrioritisedName of somePrioritisedTables.keys()) {
-        somePrioritisedNames.push( aPrioritisedName);
+    // sort alphabetically ranked tables
+    const someRankedNames : string[] = [ ];
+    for( let aRankedName of someRankedTables.keys()) {
+        someRankedNames.push( aRankedName);
     }
-    const someSortedPrioritisedNames = somePrioritisedNames.sort();
-    for( let aTableName of someSortedPrioritisedNames) {
+    const someSortedRankedNames = someRankedNames.sort();
+    for( let aTableName of someSortedRankedNames) {
         let aTable = allTablesByName.get( aTableName);
         if( aTable) {
             someTables.push( aTable);
         }
     }
 
-    const someNotPrioritisedTableNames : string[] = [ ];
+    // collect tables which were not ranked
+    const otherTableNames : string[] = [ ];
     for( let aTable of theTables) {
-        if( !somePrioritisedTables.has( aTable.name)) {
-            someNotPrioritisedTableNames.push( aTable.name);
+        if( !someRankedTables.has( aTable.name)) {
+            otherTableNames.push( aTable.name);
         }
     }
 
-    const someSortedNotPrioritisedNames = someNotPrioritisedTableNames.sort();
-    for( let aTableName of someSortedNotPrioritisedNames) {
+    // sort alphabetically tables which were not ranked
+    const someOtherNames = otherTableNames.sort();
+    for( let aTableName of someOtherNames) {
         let aTable = allTablesByName.get( aTableName);
         if( aTable) {
             someTables.push( aTable);
@@ -144,35 +151,36 @@ function prioritiseTables( theTables : Itable[], thePrioritisedTableColumns : Ma
 }
 
 
-function prioritiseTableColumnNamed( thePrioritisedTableColumns : Map<string, string[]>, theTableName : string, theColumnName : string) {
+function rankTableColumnNamed( theFKTablesAndColumns : Map<string, string[]>, theTableName : string, theColumnName : string) {
 
-    let somePrioritisedColumns = thePrioritisedTableColumns.get( theTableName);
-    if( !somePrioritisedColumns) {
-        somePrioritisedColumns = [ ];
-        thePrioritisedTableColumns.set( theTableName, somePrioritisedColumns)
+    let someFKColumns = theFKTablesAndColumns.get( theTableName);
+    if( !someFKColumns) {
+        someFKColumns = [ ];
+        theFKTablesAndColumns.set( theTableName, someFKColumns)
     }
 
-    if( somePrioritisedColumns.indexOf( theColumnName) < 0) {
-        somePrioritisedColumns.push( theColumnName);
+    if( someFKColumns.indexOf( theColumnName) < 0) {
+        someFKColumns.push( theColumnName);
     }
 }
 
 
-function createAndPopulateEntity( theMendixDomainModel : domainmodels.DomainModel, theTable: Itable, thePrioritisedTableColumns : Map<string, string[]>,
+
+function createAndPopulateEntity( theDomainModel : domainmodels.DomainModel, theTable: Itable, theFKTablesAndColumns : Map<string, string[]>,
                                   theXCursor: number, theYCursor: number):number {
 
     console.info( "+ Entity " + theTable.name);
 
-    const aNewEntity = domainmodels.Entity.createIn(theMendixDomainModel);
+    const aNewEntity = domainmodels.Entity.createIn(theDomainModel);
     aNewEntity.name = theTable.name;
     aNewEntity.location = { x: theXCursor, y: theYCursor };
     aNewEntity.documentation = JSON.stringify( theTable, (theKey : string, theValue : any) => { return ( theKey == "column") ? undefined : theValue; }, 4);
 
-    const someColumns = chooseAFewAttributes( theTable, thePrioritisedTableColumns);
+    const someColumns = chooseAFewAttributes( theTable, theFKTablesAndColumns);
     console.info( "  ... about to create " + someColumns.length + " attributes");
     for( let aColumn of someColumns) {
 
-        createAndPopulateAttribute( theMendixDomainModel, aNewEntity, aColumn);
+        createAndPopulateAttribute( theDomainModel, aNewEntity, aColumn);
     }
     console.info( "  ok");
     console.info( "  + " + someColumns.length + " attributes");
@@ -181,9 +189,9 @@ function createAndPopulateEntity( theMendixDomainModel : domainmodels.DomainMode
 }
 
 
-function chooseAFewAttributes( theTable: Itable, thePrioritisedTableColumns : Map<string, string[]>) : Icolumn[] {
+function chooseAFewAttributes( theTable: Itable, theFKTablesAndColumns : Map<string, string[]>) : Icolumn[] {
 
-    const someColumns = prioritiseAttributes( theTable.name, theTable.column, thePrioritisedTableColumns);
+    const someColumns = rankAttributes( theTable.name, theTable.column, theFKTablesAndColumns);
 
     if ( MAXATTRIBUTES < 1) {
         return someColumns;
@@ -196,50 +204,50 @@ function chooseAFewAttributes( theTable: Itable, thePrioritisedTableColumns : Ma
     return someColumns.slice( 0, MAXATTRIBUTES);
 }
 
-/* Prefer columns which have been prioritised because being involved in a foreign key, whether as local or foreign column,
+/* Prefer columns which have been ranked because being involved in a foreign key, whether as local or foreign column,
  or columns with name starting with "ID" (possibly named ID_BYDBRE by rule in method createAndPopulateAttribute because ID is reserved by Mendix model SDK).
- Sort alphabetically the prioritised or ID columns and after these append the non prioritised or ID columns also sorted alphabetically among themselves.
+ Sort alphabetically the ranked or ID columns and after these append the non ranked or ID columns also sorted alphabetically among themselves.
  */
-function prioritiseAttributes( theTableName : string, theColumns : Icolumn[], thePrioritisedTableColumns : Map<string, string[]>) : Icolumn[] {
+function rankAttributes( theTableName : string, theColumns : Icolumn[], theFKTablesAndColumns : Map<string, string[]>) : Icolumn[] {
 
     if( !theColumns.length) {
         return theColumns;
     }
 
-    const somePrioritisedNames : string[] = [ ];
+    const someRankedNames : string[] = [ ];
 
-    // Always include the columns which have been prioritised because of being involved in a foreign key as local or foreign column
-    const somePrioritisedColumns = thePrioritisedTableColumns.get( theTableName);
-    if( somePrioritisedColumns) {
-        Array.prototype.push.apply(somePrioritisedNames, somePrioritisedColumns);
+    // Always include the columns which have been ranked because of being involved in a foreign key as local or foreign column
+    const someFKColumns = theFKTablesAndColumns.get( theTableName);
+    if( someFKColumns) {
+        Array.prototype.push.apply(someRankedNames, someFKColumns);
     }
 
     const allColumnsByName = new Map<string, Icolumn>();
 
     // Index the columns by name for faster log N retrieval by name later on.
-    // Include the columns with name starting by ID and have not been prioritised because of being involved in a foreign key as local or foreign column
+    // Include the columns with name starting by ID and have not been ranked because of being involved in a foreign key as local or foreign column
     for( let aColumn of theColumns) {
 
         allColumnsByName.set( aColumn.name, aColumn);
 
-        if( somePrioritisedNames.indexOf( aColumn.name) >= 0) {
+        if( someRankedNames.indexOf( aColumn.name) >= 0) {
             continue;
         }
 
         if( aColumn.name.startsWith( "ID")) {
-            if( somePrioritisedNames.indexOf( aColumn.name) >= 0) {
+            if( someRankedNames.indexOf( aColumn.name) >= 0) {
                 continue;
             }
-            somePrioritisedNames.push( aColumn.name);
+            someRankedNames.push( aColumn.name);
         }
     }
 
     // Collect resulting columns
     const someColumns : Icolumn[] = [ ];
 
-    // Prioritised and ID columns sorted among themselves
-    const someSortedPrioritisedNames = somePrioritisedNames.sort();
-    for( let aColumnName of someSortedPrioritisedNames) {
+    // Ranked and ID columns sorted among themselves
+    const someSortedRankedNames = someRankedNames.sort();
+    for( let aColumnName of someSortedRankedNames) {
         let aColumn = allColumnsByName.get( aColumnName);
         if( aColumn) {
             someColumns.push( aColumn);
@@ -247,19 +255,18 @@ function prioritiseAttributes( theTableName : string, theColumns : Icolumn[], th
     }
 
 
-    // Non-Prioritised columns sorted among themselves
-    const someNonPrioritisedNames : string[] = [ ];
-
+    // Collect Non-Ranked  non ID columns
+    const otherNames : string[] = [ ];
     for( let aColumn of theColumns) {
-        if( somePrioritisedNames.indexOf( aColumn.name) >= 0) {
+        if( someRankedNames.indexOf( aColumn.name) >= 0) {
             continue;
         }
-        someNonPrioritisedNames.push( aColumn.name);
+        otherNames.push( aColumn.name);
     }
 
-    // Prioritised and ID columns sorted among themselves
-    const someSortedNonPrioritisedNames = someNonPrioritisedNames.sort();
-    for( let aColumnName of someSortedNonPrioritisedNames) {
+    // Non Ranked non ID columns sorted among themselves
+    const otherSortedNames = otherNames.sort();
+    for( let aColumnName of otherSortedNames) {
         let aColumn = allColumnsByName.get( aColumnName);
         if( aColumn) {
             someColumns.push( aColumn);
@@ -267,22 +274,21 @@ function prioritiseAttributes( theTableName : string, theColumns : Icolumn[], th
     }
 
     return someColumns;
-
 }
 
 
 
-function createAndPopulateAttribute( theMendixDomainModel : domainmodels.DomainModel, theEntity: domainmodels.Entity, theColumn: Icolumn) {
+function createAndPopulateAttribute( theDomainModel : domainmodels.DomainModel, theEntity: domainmodels.Entity, theColumn: Icolumn) {
 
-    let aColumnName = theColumn.name;
-    if( aColumnName.toUpperCase() == "ID") {
-        aColumnName = "ID_BYDBRE";
+    let anAttributeName = theColumn.name;
+    if( anAttributeName.toUpperCase() == "ID") {
+        anAttributeName = "ID_BYDBRE";
     }
-    console.info( "   + Attribute " + aColumnName);
+    console.info( "   + Attribute " + anAttributeName);
 
     const aNewAttribute = domainmodels.Attribute.createIn(theEntity);
 
-    aNewAttribute.name = aColumnName;
+    aNewAttribute.name = anAttributeName;
     aNewAttribute.documentation = JSON.stringify( theColumn, null, 4);
 
     switch( theColumn.type) {
@@ -337,4 +343,92 @@ function createAndPopulateAttribute( theMendixDomainModel : domainmodels.DomainM
         default:
             domainmodels.StringAttributeType.createIn( aNewAttribute);
     }
+}
+
+
+
+/* Create Associations from foreign keys in the reverse engineeded model.
+ The tables with columns which are involved in a Foreign Key as local or foreign column have been collected in a previous step into theFKTablesAndColumns
+*/
+function createAndPopulateAssociations( theDomainModel : domainmodels.DomainModel, theTables: Itable[], theFKTablesAndColumns : Map<string, string[]>) {
+
+    // map tables by name for faster log N access below
+    const allTablesByName = new Map<string, Itable>();
+    for( let aTable of theTables) {
+        allTablesByName.set( aTable.name, aTable);
+    }
+
+    // Impose a deterministic order of processing tables by table name
+    const someTableNames : string[] = [ ];
+    for( let aTableName of theFKTablesAndColumns.keys()) {
+        someTableNames.push( aTableName);
+    }
+    const someSortedTableNames = someTableNames.sort();
+    for( let aTableName of someSortedTableNames) {
+        const aTable = allTablesByName.get( aTableName);
+        if( !aTable) {
+            continue;
+        }
+
+        if( !aTable.foreignKey || !aTable.foreignKey.length) {
+            continue;
+        }
+
+        // Impose a deterministic order of processing foreign keys by foreign table name
+        const someForeignKeysSorted = aTable.foreignKey.sort( ( theFK1, theFK2) => { return theFK1.foreignTable.localeCompare( theFK2.foreignTable);});
+
+        // iterate over foreign keys. Each is candidate to produce an association
+        for( let aForeignKey of someForeignKeysSorted) {
+
+            const aLocalColumn = columnByName( aTable.column, aForeignKey.reference.local);
+            if( !aLocalColumn) {
+                continue;
+            }
+
+            const aForeignTable = allTablesByName.get( aForeignKey.foreignTable);
+            if( !aForeignTable) {
+                continue;
+            }
+
+            const aForeignColumn = columnByName( aForeignTable.column, aForeignKey.reference.foreign);
+            if( !aForeignColumn) {
+                continue;
+            }
+
+            const someEntities = theDomainModel.entities.filter( theEntity => theEntity.name == aTable.name);
+            if( !someEntities || !someEntities.length) {
+                continue;
+            }
+            const anEntity = someEntities[ 0];
+
+            const someForeignEntities = theDomainModel.entities.filter( theEntity => theEntity.name == aForeignTable.name);
+            if( !someForeignEntities || !someForeignEntities.length) {
+                continue;
+            }
+            const aForeignEntity = someForeignEntities[ 0];
+
+
+            console.info( "   + Association " + aForeignKey.name);
+
+            // https://apidocs.mendix.com/modelsdk/latest/classes/domainmodels.association.html
+            const aNewAssociation = domainmodels.Association.createIn(theDomainModel);
+            aNewAssociation.name = aForeignKey.name;
+            aNewAssociation.parent = aForeignEntity;
+            aNewAssociation.parentConnection = aForeignEntity.location;
+            aNewAssociation.child = anEntity;
+            aNewAssociation.childConnection = anEntity.location;
+            aNewAssociation.type = domainmodels.AssociationType.ReferenceSet;
+            aNewAssociation.owner = domainmodels.AssociationOwner.Default;
+        }
+    }
+}
+
+
+function columnByName( theColumns : Icolumn[], theName : string): Icolumn | undefined {
+    for( let aColumn of theColumns) {
+        if( aColumn.name == theName) {
+            return aColumn;
+        }
+    }
+    return undefined;
 }
