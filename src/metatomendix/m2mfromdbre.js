@@ -5,24 +5,26 @@ const mendixmodelsdk_1 = require("mendixmodelsdk");
    Used to expedite trials with models smaller than the whole 120 entities and over 3000 attributes.
    If > 0 then it is the max # of entities to be created
 */
-const MAXENTITIES = 50;
-const MAXATTRIBUTES = 5;
+const LIMITRUN = false;
+const MAXENTITIES = LIMITRUN ? 50 : 0;
+const MAXATTRIBUTES = LIMITRUN ? 10 : 0;
 const XCURSOR_INITIAL = 100;
 const XCURSOR_SPACE = 150;
 const YCURSOR_INITIAL = 100;
 const YCURSOR_ENTITY = 20;
 const YCURSOR_ATTRIBUTE = 14;
 const YCURSOR_SPACE = 20;
-const YCURSOR_MAX = 2000;
+const YCURSOR_MAX = 1201;
 function populateMendixFromDBRE(theMendixDomainModel, theDBRE) {
     console.info("HI!");
-    const someTables = chooseAFewTables(theDBRE);
+    const somePrioritisedTableColumns = new Map();
+    const someTables = chooseAFewTables(theDBRE, somePrioritisedTableColumns);
     let aNumTables = someTables.length;
     let anXCursor = XCURSOR_INITIAL;
     let anYCursor = YCURSOR_INITIAL;
     for (let aTableIdx = 0; aTableIdx < aNumTables; aTableIdx++) {
         let aTable = someTables[aTableIdx];
-        anYCursor = createAndPopulateEntity(theMendixDomainModel, aTable, anXCursor, anYCursor);
+        anYCursor = createAndPopulateEntity(theMendixDomainModel, aTable, somePrioritisedTableColumns, anXCursor, anYCursor);
         if (anYCursor > YCURSOR_MAX) {
             anXCursor = anXCursor + XCURSOR_SPACE;
             anYCursor = YCURSOR_INITIAL;
@@ -31,8 +33,8 @@ function populateMendixFromDBRE(theMendixDomainModel, theDBRE) {
     }
 }
 exports.default = populateMendixFromDBRE;
-function chooseAFewTables(theDBRE) {
-    const someTables = prioritiseTables(theDBRE.table);
+function chooseAFewTables(theDBRE, thePrioritisedTableColumns) {
+    const someTables = prioritiseTables(theDBRE.table, thePrioritisedTableColumns);
     if (MAXENTITIES < 1) {
         return someTables;
     }
@@ -41,9 +43,11 @@ function chooseAFewTables(theDBRE) {
     }
     return someTables.slice(0, MAXENTITIES);
 }
-// We prefer the tables involved in foreign keys because these allow to exercise creation of model associations
-// Return a list with prioritised tables sorted alphabetically, followed by not prioritised tables sorted alphabetically
-function prioritiseTables(theTables) {
+/* We prefer the tables involved in foreign keys because these allow to exercise creation of model associations.
+ Return a list with prioritised tables sorted alphabetically, followed by not prioritised tables sorted alphabetically.
+ Also collect the columns of each table which intervene in foreign keys whether as local or foreign columns
+*/
+function prioritiseTables(theTables, thePrioritisedTableColumns) {
     if (!theTables.length) {
         return theTables;
     }
@@ -63,6 +67,15 @@ function prioritiseTables(theTables) {
         }
         for (let aForeignKey of aTable.foreignKey) {
             if (aForeignKey.foreignTable) {
+                let aReference = aForeignKey.reference;
+                if (aReference) {
+                    if (aReference.local) {
+                        prioritiseTableColumnNamed(thePrioritisedTableColumns, aTable.name, aReference.local);
+                    }
+                    if (aReference.foreign) {
+                        prioritiseTableColumnNamed(thePrioritisedTableColumns, aForeignKey.foreignTable, aReference.foreign);
+                    }
+                }
                 if (!(aForeignKey.foreignTable in somePrioritisedTables)) {
                     const aForeignTable = allTablesByName.get(aForeignKey.foreignTable);
                     if (aForeignTable) {
@@ -101,13 +114,23 @@ function prioritiseTables(theTables) {
     }
     return someTables;
 }
-function createAndPopulateEntity(theMendixDomainModel, theTable, theXCursor, theYCursor) {
+function prioritiseTableColumnNamed(thePrioritisedTableColumns, theTableName, theColumnName) {
+    let somePrioritisedColumns = thePrioritisedTableColumns.get(theTableName);
+    if (!somePrioritisedColumns) {
+        somePrioritisedColumns = [];
+        thePrioritisedTableColumns.set(theTableName, somePrioritisedColumns);
+    }
+    if (somePrioritisedColumns.indexOf(theColumnName) < 0) {
+        somePrioritisedColumns.push(theColumnName);
+    }
+}
+function createAndPopulateEntity(theMendixDomainModel, theTable, thePrioritisedTableColumns, theXCursor, theYCursor) {
     console.info("+ Entity " + theTable.name);
     const aNewEntity = mendixmodelsdk_1.domainmodels.Entity.createIn(theMendixDomainModel);
     aNewEntity.name = theTable.name;
     aNewEntity.location = { x: theXCursor, y: theYCursor };
     aNewEntity.documentation = JSON.stringify(theTable, (theKey, theValue) => { return (theKey == "column") ? undefined : theValue; }, 4);
-    const someColumns = chooseAFewAttributes(theTable);
+    const someColumns = chooseAFewAttributes(theTable, thePrioritisedTableColumns);
     console.info("  ... about to create " + someColumns.length + " attributes");
     for (let aColumn of someColumns) {
         createAndPopulateAttribute(theMendixDomainModel, aNewEntity, aColumn);
@@ -116,14 +139,72 @@ function createAndPopulateEntity(theMendixDomainModel, theTable, theXCursor, the
     console.info("  + " + someColumns.length + " attributes");
     return theYCursor + YCURSOR_ENTITY + (someColumns.length * YCURSOR_ATTRIBUTE) + YCURSOR_SPACE;
 }
-function chooseAFewAttributes(theTable) {
+function chooseAFewAttributes(theTable, thePrioritisedTableColumns) {
+    const someColumns = prioritiseAttributes(theTable.name, theTable.column, thePrioritisedTableColumns);
     if (MAXATTRIBUTES < 1) {
-        return theTable.column;
+        return someColumns;
     }
     if (theTable.column.length <= MAXATTRIBUTES) {
-        return theTable.column;
+        return someColumns;
     }
-    return theTable.column.slice(0, MAXATTRIBUTES);
+    return someColumns.slice(0, MAXATTRIBUTES);
+}
+/* Prefer columns which have been prioritised because being involved in a foreign key, whether as local or foreign column,
+ or columns with name starting with "ID" (possibly named ID_BYDBRE by rule in method createAndPopulateAttribute because ID is reserved by Mendix model SDK).
+ Sort alphabetically the prioritised or ID columns and after these append the non prioritised or ID columns also sorted alphabetically among themselves.
+ */
+function prioritiseAttributes(theTableName, theColumns, thePrioritisedTableColumns) {
+    if (!theColumns.length) {
+        return theColumns;
+    }
+    const somePrioritisedNames = [];
+    // Always include the columns which have been prioritised because of being involved in a foreign key as local or foreign column
+    const somePrioritisedColumns = thePrioritisedTableColumns.get(theTableName);
+    if (somePrioritisedColumns) {
+        Array.prototype.push.apply(somePrioritisedNames, somePrioritisedColumns);
+    }
+    const allColumnsByName = new Map();
+    // Index the columns by name for faster log N retrieval by name later on.
+    // Include the columns with name starting by ID and have not been prioritised because of being involved in a foreign key as local or foreign column
+    for (let aColumn of theColumns) {
+        allColumnsByName.set(aColumn.name, aColumn);
+        if (somePrioritisedNames.indexOf(aColumn.name) >= 0) {
+            continue;
+        }
+        if (aColumn.name.startsWith("ID")) {
+            if (somePrioritisedNames.indexOf(aColumn.name) >= 0) {
+                continue;
+            }
+            somePrioritisedNames.push(aColumn.name);
+        }
+    }
+    // Collect resulting columns
+    const someColumns = [];
+    // Prioritised and ID columns sorted among themselves
+    const someSortedPrioritisedNames = somePrioritisedNames.sort();
+    for (let aColumnName of someSortedPrioritisedNames) {
+        let aColumn = allColumnsByName.get(aColumnName);
+        if (aColumn) {
+            someColumns.push(aColumn);
+        }
+    }
+    // Non-Prioritised columns sorted among themselves
+    const someNonPrioritisedNames = [];
+    for (let aColumn of theColumns) {
+        if (somePrioritisedNames.indexOf(aColumn.name) >= 0) {
+            continue;
+        }
+        someNonPrioritisedNames.push(aColumn.name);
+    }
+    // Prioritised and ID columns sorted among themselves
+    const someSortedNonPrioritisedNames = someNonPrioritisedNames.sort();
+    for (let aColumnName of someSortedNonPrioritisedNames) {
+        let aColumn = allColumnsByName.get(aColumnName);
+        if (aColumn) {
+            someColumns.push(aColumn);
+        }
+    }
+    return someColumns;
 }
 function createAndPopulateAttribute(theMendixDomainModel, theEntity, theColumn) {
     let aColumnName = theColumn.name;
